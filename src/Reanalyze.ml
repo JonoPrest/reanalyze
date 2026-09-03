@@ -43,7 +43,6 @@ let processCmtFiles ~cmtRoot =
     Filename.check_suffix path ".cmt" || Filename.check_suffix path ".cmti"
   in
   let processCmtFilePaths cmtFilePaths =
-    cmtFilePaths |> List.iter Compat.registerCmtFile;
     cmtFilePaths |> List.iter (loadCmtFile ~cmtRoot)
   in
   match cmtRoot with
@@ -70,8 +69,6 @@ let processCmtFiles ~cmtRoot =
     let sourceDirs =
       Paths.readSourceDirs ~configSources:None |> List.sort String.compare
     in
-    (* Collect the cmt files of every source directory before processing any,
-       so cross-directory declaration dependencies can be resolved. *)
     sourceDirs
     |> List.concat_map (fun sourceDir ->
            let libBsSourceDir = Filename.concat lib_bs sourceDir in

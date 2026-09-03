@@ -198,8 +198,9 @@ let addValueReferenceOrRedirect ~(locFrom : Location.t) ~(locTo : Location.t)
 let rec collectExpr super self (e : Typedtree.expression) =
   let locFrom = e.exp_loc in
   (match e.exp_desc with
-  | Texp_ident (_path, _, {Types.val_loc = {loc_ghost = false; _} as locTo})
+  | Texp_ident (_path, _, ({Types.val_loc = {loc_ghost = false; _}} as vd))
     ->
+    let locTo = Compat.resolveValueLoc vd in
     (* if Path.name _path = "rc" then assert false; *)
     if locFrom = locTo && _path |> Path.name = "emptyArray" then (
       (* Work around lowercase jsx with no children producing an artifact `emptyArray`
@@ -214,11 +215,12 @@ let rec collectExpr super self (e : Typedtree.expression) =
       ( {
           exp_desc =
             Texp_ident
-              (path, _, {Types.val_loc = {loc_ghost = false; _} as locTo});
+              (path, _, ({Types.val_loc = {loc_ghost = false; _}} as vd));
           exp_type;
           exp_loc = identLoc;
         },
         args ) ->
+    let locTo = Compat.resolveValueLoc vd in
     let locToImpl = findResolution ~identLoc ~path in
     args
     |> processOptionalArgs ~expType:exp_type
@@ -240,7 +242,7 @@ let rec collectExpr super self (e : Typedtree.expression) =
                   Texp_ident
                     ( path,
                       _,
-                      {Types.val_loc = {loc_ghost = false; _} as locTo} );
+                      ({Types.val_loc = {loc_ghost = false; _}} as vd) );
                 exp_type;
               };
           };
@@ -284,6 +286,7 @@ let rec collectExpr super self (e : Typedtree.expression) =
     when Ident.name idArg = "arg"
          && Ident.name etaArg = "eta"
          && Path.name idArg2 = "arg" ->
+    let locTo = Compat.resolveValueLoc vd in
     args
     |> processOptionalArgs ~expType:exp_type
          ~locFrom:(locFrom : Location.t)
@@ -382,8 +385,9 @@ let findSignatureItem name signature =
    to; it is used to reference the implementation of an item rather than a
    shared module type item. See [Compat.resolveIdentOccurrences]. *)
 let addValueReferenceFromSignatureItem ~locFrom ?shape signatureItem =
-  let id, locTo, _kind, _valType = signatureItem |> Compat.getSigValue in
-  if not locTo.loc_ghost then
+  let id, vd = signatureItem |> Compat.getSigValueDescription in
+  if not vd.val_loc.loc_ghost then
+    let locTo = Compat.resolveValueLoc vd in
     let locToImpl =
       match shape with
       | Some shape -> !identResolutions.projValue shape (Ident.name id)
@@ -471,7 +475,12 @@ let rec processSignatureItem ~doTypes ~doValues ~moduleLoc ~path
       DeadType.addDeclaration ~typeId:id ~typeKind:t.type_kind
   | Sig_value _ when doValues ->
     let id, loc, kind, valType = si |> Compat.getSigValue in
-    if not loc.Location.loc_ghost then
+    let _, vd = si |> Compat.getSigValueDescription in
+    (* An item copied by [include] in a signature carries the location of the
+       include rather than its own. It is declared where the uid points, and
+       references resolve there, so it must not be declared here too. *)
+    let isIncluded = (Compat.resolveValueLoc vd).loc_start <> loc.loc_start in
+    if (not loc.Location.loc_ghost) && not isIncluded then
       let isPrimitive = match kind with Val_prim _ -> true | _ -> false in
       if (not isPrimitive) || !Config.analyzeExternals then
         let optionalArgs =

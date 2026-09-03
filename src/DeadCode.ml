@@ -9,6 +9,7 @@ let processSignature ~doValues ~doTypes (signature : Types.signature) =
            sig_item)
 
 let processCmt ~cmtFilePath (cmt_infos : Cmt_format.cmt_infos) =
+  Compat.registerCmtInfos ~cmtFilePath cmt_infos;
   (match cmt_infos.cmt_annots with
   | Interface signature ->
     ProcessDeadAnnotations.signature signature;
@@ -28,9 +29,7 @@ let processCmt ~cmtFilePath (cmt_infos : Cmt_format.cmt_infos) =
     let cmt_value_dependencies =
       Compat.extractValueDependencies ~cmtFilePath cmt_infos
     in
-    let cmt_ident_resolutions =
-      Compat.resolveIdentOccurrences ~cmtFilePath cmt_infos
-    in
+    let cmt_ident_resolutions = Compat.resolveIdentOccurrences cmt_infos in
     DeadValue.processStructure ~doTypes:true ~doExternals
       ~cmt_value_dependencies ~cmt_ident_resolutions structure
   | _ -> ());
